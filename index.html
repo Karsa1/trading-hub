@@ -19,9 +19,8 @@
         .pnl-title { font-size: 0.6rem; color: var(--dim); text-transform: uppercase; }
         .pnl-value { font-family: monospace; font-size: 0.95rem; font-weight: bold; }
         .trade-section { margin-top: 15px; padding: 12px; background: #1c2128; border-radius: 12px; border: 1px solid #30363d; }
-        select, input { width: 100%; padding: 8px; margin-bottom: 8px; background: var(--bg); border: 1px solid #30363d; color: white; border-radius: 6px; box-sizing: border-box; }
-        .btn-group { display: flex; gap: 8px; }
-        button { flex: 1; padding: 10px; border: none; border-radius: 6px; font-weight: bold; color: white; cursor: pointer; }
+        select, input { width: 100%; padding: 10px; margin-bottom: 10px; background: var(--bg); border: 1px solid #30363d; color: white; border-radius: 6px; box-sizing: border-box; font-size: 1rem; }
+        button { width: 100%; padding: 12px; border: none; border-radius: 6px; font-weight: bold; color: white; cursor: pointer; background: var(--green); }
         .settings-btn { position: absolute; top: 15px; right: 15px; cursor: pointer; opacity: 0.5; }
         .profit { color: var(--light-green); }
         .loss { color: var(--red); }
@@ -34,64 +33,68 @@
     <div id="price-badge" class="badge">AWAITING WORKER...</div>
     <div class="gauge-box"><div class="arc"></div><div id="needle" class="needle"></div></div>
     <div id="ratio" class="status">--%</div>
-    <div id="instruction" style="font-size: 0.7rem; color: var(--dim);">Connecting...</div>
+    <div id="instruction" style="font-size: 0.65rem; color: var(--dim);">NOTIONAL TRACKING ENABLED</div>
 
     <div class="pnl-container">
-        <div class="pnl-box"><div class="pnl-title">MTD</div><div id="mtd-pnl" class="pnl-value">$--</div></div>
-        <div class="pnl-box"><div class="pnl-title">All-Time</div><div id="all-time-pnl" class="pnl-value">$--</div></div>
+        <div class="pnl-box"><div class="pnl-title">Price P&L</div><div id="cost-pnl" class="pnl-value">$--</div></div>
+        <div class="pnl-box"><div class="pnl-title">Portfolio Total</div><div id="total-val" class="pnl-value">$--</div></div>
     </div>
 
     <div class="trade-section">
-        <select id="t-asset">
-            <option value="ETH-PERP">ETH-PERP</option>
-            <option value="CL1!">CRUDE OIL</option>
-            <option value="SI1!">SILVER</option>
-        </select>
-        <input type="number" id="t-amount" placeholder="Size">
-        <div class="btn-group">
-            <button style="background: var(--green);" onclick="logTrade('BUY')">BUY</button>
-            <button style="background: var(--red);" onclick="logTrade('SELL')">SELL</button>
-        </div>
+        <div style="font-size: 0.7rem; color: var(--dim); margin-bottom: 10px; text-transform: uppercase;">Update Asset Position</div>
+        <input type="number" id="t-notional" placeholder="Notional Value ($)">
+        <input type="number" id="t-avg" placeholder="Average Cost Price">
+        <button onclick="logPosition()">UPDATE POSITION</button>
     </div>
 
     <div id="settings-panel" style="display:none; margin-top:15px; padding-top:10px; border-top:1px solid #333;">
-        <input type="number" id="set-cap" placeholder="Initial Capital">
-        <input type="number" id="set-cash" placeholder="Update Cash">
-        <button onclick="saveSettings()" style="background:#444; width:100%;">SAVE</button>
+        <input type="number" id="set-cash" placeholder="Update Cash Balance">
+        <button onclick="saveSettings()" style="background:#444;">SAVE CASH</button>
     </div>
 </div>
 
 <script>
     const client = supabase.createClient('https://bfksiczwgtjezjokgqiy.supabase.co', 'sb_publishable_okLdWFEwWl8JfhmP766cxA_u4JMbD8_');
-    let initialCap = localStorage.getItem('initial_cap') || 25000;
 
     client.channel('any').on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'portfolio_stats' }, (payload) => {
         const d = payload.new;
+        const livePrice = d.last_price || 0;
         const total = d.asset_value + d.cash_value;
         const cashP = (d.cash_value / total) * 100;
         
-        document.getElementById('price-badge').innerText = `${d.asset_name} SYNCED`;
-        document.getElementById('ratio').innerText = `${cashP.toFixed(1)}%`;
+        document.getElementById('price-badge').innerText = `${d.asset_name} @ $${livePrice.toLocaleString()}`;
+        document.getElementById('ratio').innerText = `${cashP.toFixed(1)}% Cash`;
+        document.getElementById('total-val').innerText = `$${Math.round(total).toLocaleString()}`;
+
         const deg = (cashP * 1.8) - 90;
         document.getElementById('needle').style.transform = `rotate(${deg}deg)`;
-        
-        const atProfit = total - initialCap;
-        const pnlEl = document.getElementById('all-time-pnl');
-        pnlEl.innerText = `$${Math.round(atProfit).toLocaleString()}`;
-        pnlEl.className = `pnl-value ${atProfit >= 0 ? 'profit' : 'loss'}`;
+
+        // Calculate P&L spread based on Avg Cost vs Live Price
+        if (d.avg_cost > 0 && livePrice > 0) {
+            const pnlPercent = ((livePrice - d.avg_cost) / d.avg_cost) * 100;
+            const pnlEl = document.getElementById('cost-pnl');
+            pnlEl.innerText = `${pnlPercent >= 0 ? '+' : ''}${pnlPercent.toFixed(2)}%`;
+            pnlEl.className = `pnl-value ${pnlPercent >= 0 ? 'profit' : 'loss'}`;
+        }
     }).subscribe();
 
-    async function logTrade(type) {
-        const amt = document.getElementById('t-amount').value;
-        const asset = document.getElementById('t-asset').value;
-        if (!amt) return alert("Enter amount");
+    async function logPosition() {
+        const notional = document.getElementById('t-notional').value;
+        const avg = document.getElementById('t-avg').value;
+        
+        if (!notional || !avg) return alert("Please enter both fields.");
+
         const { error } = await client.from('portfolio_stats').update({ 
-            last_trade_amount: parseFloat(amt), 
-            last_trade_type: type, 
-            last_trade_asset: asset, 
+            asset_value: parseFloat(notional),
+            avg_cost: parseFloat(avg),
             last_trade_time: new Date() 
         }).eq('id', 1);
-        if (!error) { document.getElementById('t-amount').value = ''; alert("Logged!"); }
+
+        if (!error) { 
+            alert("Position Synced!"); 
+            document.getElementById('t-notional').value = ''; 
+            document.getElementById('t-avg').value = ''; 
+        }
     }
 
     function toggleSettings() {
@@ -100,11 +103,11 @@
     }
 
     async function saveSettings() {
-        const c = document.getElementById('set-cap').value;
         const cash = document.getElementById('set-cash').value;
-        if(c) { localStorage.setItem('initial_cap', c); initialCap = c; }
-        if(cash) { await client.from('portfolio_stats').update({ cash_value: parseFloat(cash) }).eq('id', 1); }
-        alert("Saved!"); toggleSettings();
+        if(cash) { 
+            await client.from('portfolio_stats').update({ cash_value: parseFloat(cash) }).eq('id', 1); 
+            alert("Cash Saved!"); toggleSettings();
+        }
     }
 </script>
 </body>
