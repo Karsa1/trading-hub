@@ -1,0 +1,68 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Martin Trading Hub</title>
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <style>
+        body { background: #0d1117; color: #e6edf3; font-family: sans-serif; display: flex; justify-content: center; align-items: center; height: 100vh; margin: 0; }
+        .card { background: #161b22; padding: 2rem; border-radius: 16px; border: 1px solid #30363d; text-align: center; width: 350px; }
+        .gauge-container { position: relative; width: 200px; height: 100px; margin: 20px auto; overflow: hidden; }
+        .gauge-arc { width: 200px; height: 200px; border-radius: 50%; border: 15px solid #30363d; border-bottom-color: #238636; transform: rotate(45deg); }
+        .needle { position: absolute; bottom: 0; left: 50%; width: 3px; height: 80px; background: #f85149; transform-origin: bottom center; transform: rotate(0deg); transition: transform 1s cubic-bezier(0.17, 0.67, 0.83, 0.67); }
+        .status { margin-top: 20px; font-weight: bold; font-size: 1.2rem; }
+        .price-badge { font-family: monospace; background: #21262d; padding: 5px 10px; border-radius: 5px; color: #7ee787; }
+    </style>
+</head>
+<body>
+
+<div class="card">
+    <h3>Shannon's Demon</h3>
+    <div id="asset-label" class="price-badge">WAITING FOR DATA...</div>
+    
+    <div class="gauge-container">
+        <div class="gauge-arc"></div>
+        <div id="needle" class="needle"></div>
+    </div>
+
+    <div id="ratio-display" class="status">--% Cash</div>
+    <div id="action-hint" style="color: #8b949e; font-size: 0.8rem;">Monitoring Equilibrium...</div>
+</div>
+
+<script>
+    // 1. CONNECTION SETTINGS
+    const SUPABASE_URL = 'https://bfksiczwgtjezjokgqiy.supabase.co';
+    const SUPABASE_KEY = sb_publishable_okLdWFEwWl8JfhmP766cxA_u4JMbD8_; // Use the ANON key, not service_role!
+
+    const supabaseClient = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+
+    // 2. LISTEN FOR UPDATES
+    const channel = supabaseClient
+        .channel('schema-db-changes')
+        .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'portfolio_stats' }, payload => {
+            console.log('Update received!', payload.new);
+            refreshUI(payload.new);
+        })
+        .subscribe();
+
+    function refreshUI(data) {
+        const total = data.asset_value + data.cash_value;
+        const cashRatio = (data.cash_value / total) * 100;
+        
+        // Update Label
+        document.getElementById('asset-label').innerText = `${data.asset_name}: $${data.asset_value.toLocaleString()}`;
+        document.getElementById('ratio-display').innerText = `${cashRatio.toFixed(1)}% Cash`;
+
+        // Move Needle (50% is 0 degrees)
+        const rotation = (cashRatio * 1.8) - 90;
+        document.getElementById('needle').style.transform = `rotate(${rotation}deg)`;
+
+        // Action Logic
+        const hint = document.getElementById('action-hint');
+        if (cashRatio > 55) { hint.innerText = "ACTION: BUY ASSET"; hint.style.color = "#f85149"; }
+        else if (cashRatio < 45) { hint.innerText = "ACTION: SELL ASSET"; hint.style.color = "#f85149"; }
+        else { hint.innerText = "Equilibrium Reached"; hint.style.color = "#7ee787"; }
+    }
+</script>
+</body>
+</html>
