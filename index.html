@@ -33,16 +33,15 @@
     </div>
     <div class="trade-section">
         <span class="label">Ticker Symbol</span>
-        <input type="text" id="t-ticker" placeholder="e.g. ETH-USD, CL1!" style="text-transform: uppercase;">
-        <span class="label">Total Notional Value ($)</span>
-        <input type="number" id="t-notional" placeholder="Current Value">
-        <span class="label">Average Cost Basis</span>
+        <input type="text" id="t-ticker" placeholder="e.g. CL1!, ETH-USD" style="text-transform: uppercase;">
+        <span class="label">Notional Value ($)</span>
+        <input type="number" id="t-notional" placeholder="Current Position $">
+        <span class="label">Avg Cost</span>
         <input type="number" id="t-avg" placeholder="Entry Price">
-        <button onclick="logPosition()">SYNC ASSET DATA</button>
+        <button onclick="logPosition()">SYNC ASSET</button>
     </div>
     <div id="settings-panel" style="display:none; margin-top:20px; padding-top:15px; border-top:1px solid #333;">
-        <span class="label">Update Total Cash Balance</span>
-        <input type="number" id="set-cash" placeholder="Current Cash">
+        <input type="number" id="set-cash" placeholder="Global Cash Balance">
         <button onclick="saveCash()" style="background:#444;">UPDATE CASH</button>
     </div>
 </div>
@@ -66,19 +65,24 @@
 
     async function logPosition() {
         const ticker = document.getElementById('t-ticker').value.toUpperCase().trim();
-        const notional = document.getElementById('t-notional').value;
+        const val = document.getElementById('t-notional').value;
         const avg = document.getElementById('t-avg').value;
-        if (!ticker || !notional || !avg) return alert("Fill all fields");
+        
+        if (!ticker || !val || !avg) return alert("Fill all fields");
 
+        // Removed last_trade_time to avoid the schema cache error
         const { error } = await client.from('portfolio_stats').upsert({ 
             asset_name: ticker,
-            asset_value: parseFloat(notional),
-            avg_cost: parseFloat(avg),
-            last_trade_time: new Date() 
+            asset_value: parseFloat(val),
+            avg_cost: parseFloat(avg)
         }, { onConflict: 'asset_name' });
 
-        if (error) alert("Error: " + error.message);
-        else { alert(ticker + " Synced!"); }
+        if (error) {
+            console.error(error);
+            alert("Error: " + error.message);
+        } else { 
+            alert(ticker + " Updated!"); 
+        }
     }
 
     function toggleSettings() {
@@ -89,7 +93,7 @@
     async function saveCash() {
         const cash = document.getElementById('set-cash').value;
         if(cash) { 
-            await client.from('portfolio_stats').update({ cash_value: parseFloat(cash) }).eq('id', 1); 
+            await client.from('portfolio_stats').update({ cash_value: parseFloat(cash) }).match({ asset_name: 'GLOBAL_CASH' }); 
             alert("Cash Updated"); toggleSettings();
         }
     }
