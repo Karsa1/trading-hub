@@ -9,76 +9,53 @@
         :root { --bg: #0d1117; --card: #161b22; --green: #238636; --light-green: #7ee787; --red: #f85149; --text: #e6edf3; --dim: #8b949e; }
         body { background: var(--bg); color: var(--text); font-family: -apple-system, sans-serif; display: flex; justify-content: center; align-items: center; min-height: 100vh; margin: 0; padding: 20px; box-sizing: border-box; }
         .card { background: var(--card); padding: 1.5rem; border-radius: 24px; border: 1px solid #30363d; text-align: center; width: 100%; max-width: 380px; box-shadow: 0 20px 50px rgba(0,0,0,0.5); position: relative; }
-        
         .badge { font-family: monospace; background: #21262d; padding: 6px 12px; border-radius: 6px; color: var(--light-green); border: 1px solid #30363d; font-size: 0.85rem; margin-bottom: 15px; display: inline-block; }
-        
-        /* Dashboard Stats */
         .pnl-container { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin: 15px 0; }
         .pnl-box { background: #0d1117; padding: 12px; border-radius: 12px; border: 1px solid #30363d; }
-        .pnl-title { font-size: 0.6rem; color: var(--dim); text-transform: uppercase; letter-spacing: 1px; margin-bottom: 5px; }
+        .pnl-title { font-size: 0.6rem; color: var(--dim); text-transform: uppercase; margin-bottom: 5px; }
         .pnl-value { font-family: monospace; font-size: 1rem; font-weight: bold; }
-
-        /* Logging Form */
         .trade-section { margin-top: 15px; padding: 15px; background: #1c2128; border-radius: 16px; border: 1px solid #30363d; text-align: left; }
-        .label { font-size: 0.7rem; color: var(--dim); text-transform: uppercase; margin-bottom: 5px; margin-left: 2px; display: block; }
+        .label { font-size: 0.7rem; color: var(--dim); text-transform: uppercase; margin-bottom: 5px; display: block; }
         input { width: 100%; padding: 12px; margin-bottom: 12px; background: var(--bg); border: 1px solid #30363d; color: white; border-radius: 8px; box-sizing: border-box; font-size: 1rem; }
-        button { width: 100%; padding: 14px; border: none; border-radius: 8px; font-weight: bold; color: white; cursor: pointer; background: var(--green); transition: opacity 0.2s; }
-        button:active { opacity: 0.7; }
-        
+        button { width: 100%; padding: 14px; border: none; border-radius: 8px; font-weight: bold; color: white; cursor: pointer; background: var(--green); }
         .settings-btn { position: absolute; top: 15px; right: 15px; cursor: pointer; font-size: 1.2rem; }
         .profit { color: var(--light-green); }
         .loss { color: var(--red); }
     </style>
 </head>
 <body>
-
 <div class="card">
     <div class="settings-btn" onclick="toggleSettings()">⚙️</div>
-    <div id="active-asset" class="badge">SELECT ASSET BELOW</div>
-
+    <div id="active-asset" class="badge">READY TO SYNC</div>
     <div class="pnl-container">
-        <div class="pnl-box">
-            <div class="pnl-title">Avg Cost P&L</div>
-            <div id="cost-pnl" class="pnl-value">$--</div>
-        </div>
-        <div class="pnl-box">
-            <div class="pnl-title">Live Price</div>
-            <div id="live-price" class="pnl-value">$--</div>
-        </div>
+        <div class="pnl-box"><div class="pnl-title">Avg Cost P&L</div><div id="cost-pnl" class="pnl-value">$--</div></div>
+        <div class="pnl-box"><div class="pnl-title">Live Price</div><div id="live-price" class="pnl-value">$--</div></div>
     </div>
-
     <div class="trade-section">
         <span class="label">Ticker Symbol</span>
-        <input type="text" id="t-ticker" placeholder="e.g. ETH-USD, CL1!, SI1!" style="text-transform: uppercase;">
-        
+        <input type="text" id="t-ticker" placeholder="e.g. ETH-USD, CL1!" style="text-transform: uppercase;">
         <span class="label">Total Notional Value ($)</span>
-        <input type="number" id="t-notional" placeholder="e.g. 15000">
-        
+        <input type="number" id="t-notional" placeholder="Current Value">
         <span class="label">Average Cost Basis</span>
-        <input type="number" id="t-avg" placeholder="e.g. 2450.50">
-        
+        <input type="number" id="t-avg" placeholder="Entry Price">
         <button onclick="logPosition()">SYNC ASSET DATA</button>
     </div>
-
     <div id="settings-panel" style="display:none; margin-top:20px; padding-top:15px; border-top:1px solid #333;">
         <span class="label">Update Total Cash Balance</span>
         <input type="number" id="set-cash" placeholder="Current Cash">
-        <button onclick="saveCash()" style="background:#444;">UPDATE GLOBAL CASH</button>
+        <button onclick="saveCash()" style="background:#444;">UPDATE CASH</button>
     </div>
 </div>
 
 <script>
     const client = supabase.createClient('https://bfksiczwgtjezjokgqiy.supabase.co', 'sb_publishable_okLdWFEwWl8JfhmP766cxA_u4JMbD8_');
 
-    // Listener for real-time updates across ANY asset in the table
     client.channel('any').on('postgres_changes', { event: '*', schema: 'public', table: 'portfolio_stats' }, (payload) => {
         const d = payload.new;
+        if (!d) return;
         const livePrice = d.last_price || 0;
-        
-        // Update UI only if this is the ticker the user just interacted with or is currently tracking
-        document.getElementById('active-asset').innerText = `${d.asset_name} TRACKING`;
+        document.getElementById('active-asset').innerText = `${d.asset_name} SYNCED`;
         document.getElementById('live-price').innerText = `$${livePrice.toLocaleString()}`;
-
         if (d.avg_cost > 0 && livePrice > 0) {
             const pnlPercent = ((livePrice - d.avg_cost) / d.avg_cost) * 100;
             const pnlEl = document.getElementById('cost-pnl');
@@ -88,28 +65,20 @@
     }).subscribe();
 
     async function logPosition() {
-        const ticker = document.getElementById('t-ticker').value.toUpperCase();
+        const ticker = document.getElementById('t-ticker').value.toUpperCase().trim();
         const notional = document.getElementById('t-notional').value;
         const avg = document.getElementById('t-avg').value;
-        
-        if (!ticker || !notional || !avg) return alert("All fields required");
+        if (!ticker || !notional || !avg) return alert("Fill all fields");
 
-        // "Upsert" logic: Update if ticker exists, Insert if it's new
         const { error } = await client.from('portfolio_stats').upsert({ 
             asset_name: ticker,
             asset_value: parseFloat(notional),
             avg_cost: parseFloat(avg),
             last_trade_time: new Date() 
-        }, { onConflict: 'asset_name' }); // Ensures ticker history is maintained
+        }, { onConflict: 'asset_name' });
 
-        if (!error) { 
-            alert(`${ticker} Updated Successfully`);
-            document.getElementById('t-notional').value = ''; 
-            document.getElementById('t-avg').value = ''; 
-        } else {
-            console.error(error);
-            alert("Database Error. Check console.");
-        }
+        if (error) alert("Error: " + error.message);
+        else { alert(ticker + " Synced!"); }
     }
 
     function toggleSettings() {
@@ -121,7 +90,7 @@
         const cash = document.getElementById('set-cash').value;
         if(cash) { 
             await client.from('portfolio_stats').update({ cash_value: parseFloat(cash) }).eq('id', 1); 
-            alert("Global Cash Updated"); toggleSettings();
+            alert("Cash Updated"); toggleSettings();
         }
     }
 </script>
