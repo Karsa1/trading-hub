@@ -9,21 +9,99 @@
         :root { --bg: #0d1117; --card: #161b22; --green: #238636; --light-green: #7ee787; --red: #f85149; --text: #e6edf3; --dim: #8b949e; }
         body { background: var(--bg); color: var(--text); font-family: -apple-system, sans-serif; display: flex; justify-content: center; align-items: center; min-height: 100vh; margin: 0; }
         .card { background: var(--card); padding: 1.5rem; border-radius: 24px; border: 1px solid #30363d; text-align: center; width: 90%; max-width: 360px; box-shadow: 0 20px 50px rgba(0,0,0,0.5); position: relative; }
-        
-        /* UI Components */
         .gauge-box { position: relative; width: 200px; height: 100px; margin: 15px auto; overflow: hidden; }
         .arc { width: 200px; height: 200px; border-radius: 50%; border: 14px solid #30363d; border-bottom-color: var(--green); transform: rotate(45deg); }
-        .needle { position: absolute; bottom: 0; left: 50%; width: 3px; height: 80px; background: var(--red); transform-origin: bottom center; transform: rotate(-90deg); transition: transform 1.5s cubic-bezier(0.17, 0.67, 0.83, 0.67); border-radius: 2px; }
+        .needle { position: absolute; bottom: 0; left: 50%; width: 3px; height: 80px; background: var(--red); transform-origin: bottom center; transform: rotate(-90deg); transition: transform 1.5s cubic-bezier(0.17, 0.67, 0.83, 0.67); }
         .status { font-size: 1.8rem; font-weight: 800; margin: 5px 0; }
         .badge { font-family: monospace; background: #21262d; padding: 4px 10px; border-radius: 6px; color: var(--light-green); border: 1px solid #30363d; font-size: 0.8rem; }
-        
-        /* Performance & Data Rows */
         .pnl-container { display: flex; justify-content: space-between; margin: 15px 0; background: #0d1117; padding: 10px; border-radius: 8px; border: 1px solid #30363d; }
         .pnl-box { text-align: center; width: 48%; }
-        .pnl-title { font-size: 0.6rem; color: var(--dim); text-transform: uppercase; margin-bottom: 2px; }
+        .pnl-title { font-size: 0.6rem; color: var(--dim); text-transform: uppercase; }
         .pnl-value { font-family: monospace; font-size: 0.95rem; font-weight: bold; }
-        .data-row { display: flex; justify-content: space-between; margin-top: 10px; font-size: 0.75rem; color: var(--dim); }
-
-        /* Logging & Inputs */
         .trade-section { margin-top: 15px; padding: 12px; background: #1c2128; border-radius: 12px; border: 1px solid #30363d; }
-        select, input { width: 100%; padding: 8px; margin-bottom: 8px; background: var(--bg); border: 1px solid #30363d; color: white; border-radius: 6px; box-sizing: border-box; font-size: 0.9rem; }
+        select, input { width: 100%; padding: 8px; margin-bottom: 8px; background: var(--bg); border: 1px solid #30363d; color: white; border-radius: 6px; box-sizing: border-box; }
+        .btn-group { display: flex; gap: 8px; }
+        button { flex: 1; padding: 10px; border: none; border-radius: 6px; font-weight: bold; color: white; cursor: pointer; }
+        .settings-btn { position: absolute; top: 15px; right: 15px; cursor: pointer; opacity: 0.5; }
+        .profit { color: var(--light-green); }
+        .loss { color: var(--red); }
+    </style>
+</head>
+<body>
+
+<div class="card">
+    <div class="settings-btn" onclick="toggleSettings()">⚙️</div>
+    <div id="price-badge" class="badge">AWAITING WORKER...</div>
+    <div class="gauge-box"><div class="arc"></div><div id="needle" class="needle"></div></div>
+    <div id="ratio" class="status">--%</div>
+    <div id="instruction" style="font-size: 0.7rem; color: var(--dim);">Connecting...</div>
+
+    <div class="pnl-container">
+        <div class="pnl-box"><div class="pnl-title">MTD</div><div id="mtd-pnl" class="pnl-value">$--</div></div>
+        <div class="pnl-box"><div class="pnl-title">All-Time</div><div id="all-time-pnl" class="pnl-value">$--</div></div>
+    </div>
+
+    <div class="trade-section">
+        <select id="t-asset">
+            <option value="ETH-PERP">ETH-PERP</option>
+            <option value="CL1!">CRUDE OIL</option>
+            <option value="SI1!">SILVER</option>
+        </select>
+        <input type="number" id="t-amount" placeholder="Size">
+        <div class="btn-group">
+            <button style="background: var(--green);" onclick="logTrade('BUY')">BUY</button>
+            <button style="background: var(--red);" onclick="logTrade('SELL')">SELL</button>
+        </div>
+    </div>
+
+    <div id="settings-panel" style="display:none; margin-top:15px; padding-top:10px; border-top:1px solid #333;">
+        <input type="number" id="set-cap" placeholder="Initial Capital">
+        <input type="number" id="set-cash" placeholder="Update Cash">
+        <button onclick="saveSettings()" style="background:#444; width:100%;">SAVE</button>
+    </div>
+</div>
+
+<script>
+    const client = supabase.createClient('https://bfksiczwgtjezjokgqiy.supabase.co', 'sb_publishable_okLdWFEwWl8JfhmP766cxA_u4JMbD8_');
+    let initialCap = localStorage.getItem('initial_cap') || 25000;
+
+    client.channel('any').on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'portfolio_stats' }, (payload) => {
+        const d = payload.new;
+        const total = d.asset_value + d.cash_value;
+        const cashP = (d.cash_value / total) * 100;
+        
+        document.getElementById('price-badge').innerText = `${d.asset_name} SYNCED`;
+        document.getElementById('ratio').innerText = `${cashP.toFixed(1)}%`;
+        const deg = (cashP * 1.8) - 90;
+        document.getElementById('needle').style.transform = `rotate(${deg}deg)`;
+        
+        const atProfit = total - initialCap;
+        document.getElementById('all-time-pnl').innerText = `$${Math.round(atProfit).toLocaleString()}`;
+        document.getElementById('all-time-pnl').className = `pnl-value ${atProfit >= 0 ? 'profit' : 'loss'}`;
+    }).subscribe();
+
+    async function logTrade(type) {
+        const amt = document.getElementById('t-amount').value;
+        const asset = document.getElementById('t-asset').value;
+        if (!amt) return alert("Enter amount");
+        const { error } = await client.from('portfolio_stats').update({ 
+            last_trade_amount: parseFloat(amt), last_trade_type: type, last_trade_asset: asset, last_trade_time: new Date() 
+        }).eq('id', 1);
+        if (!error) { document.getElementById('t-amount').value = ''; alert("Logged!"); }
+    }
+
+    function toggleSettings() {
+        const s = document.getElementById('settings-panel');
+        s.style.display = s.style.display === 'none' ? 'block' : 'none';
+    }
+
+    async function saveSettings() {
+        const c = document.getElementById('set-cap').value;
+        const cash = document.getElementById('set-cash').value;
+        if(c) { localStorage.setItem('initial_cap', c); initialCap = c; }
+        if(cash) { await client.from('portfolio_stats').update({ cash_value: parseFloat(cash) }).eq('id', 1); }
+        alert("Saved!"); toggleSettings();
+    }
+</script>
+</body>
+</html>
