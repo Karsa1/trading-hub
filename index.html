@@ -2,66 +2,157 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>Martin Trading Hub</title>
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <style>
-        body { background: #0d1117; color: #e6edf3; font-family: sans-serif; display: flex; justify-content: center; align-items: center; height: 100vh; margin: 0; }
-        .card { background: #161b22; padding: 2rem; border-radius: 16px; border: 1px solid #30363d; text-align: center; width: 350px; }
-        .gauge-container { position: relative; width: 200px; height: 100px; margin: 20px auto; overflow: hidden; }
-        .gauge-arc { width: 200px; height: 200px; border-radius: 50%; border: 15px solid #30363d; border-bottom-color: #238636; transform: rotate(45deg); }
-        .needle { position: absolute; bottom: 0; left: 50%; width: 3px; height: 80px; background: #f85149; transform-origin: bottom center; transform: rotate(0deg); transition: transform 1s cubic-bezier(0.17, 0.67, 0.83, 0.67); }
-        .status { margin-top: 20px; font-weight: bold; font-size: 1.2rem; }
-        .price-badge { font-family: monospace; background: #21262d; padding: 5px 10px; border-radius: 5px; color: #7ee787; }
+        /* Strict color palette: Dark background, Green/Light-Green highlights. No yellow or blue. */
+        :root { --bg: #0d1117; --card: #161b22; --green: #238636; --light-green: #7ee787; --red: #f85149; --text: #e6edf3; --dim: #8b949e; }
+        body { background: var(--bg); color: var(--text); font-family: -apple-system, sans-serif; display: flex; justify-content: center; align-items: center; height: 100vh; margin: 0; overflow: hidden; }
+        .card { background: var(--card); padding: 2rem; border-radius: 24px; border: 1px solid #30363d; text-align: center; width: 90%; max-width: 360px; box-shadow: 0 20px 50px rgba(0,0,0,0.5); }
+        
+        /* Gauge Styles */
+        .gauge-box { position: relative; width: 220px; height: 110px; margin: 25px auto; overflow: hidden; }
+        .arc { width: 220px; height: 220px; border-radius: 50%; border: 16px solid #30363d; border-bottom-color: var(--green); transform: rotate(45deg); }
+        .needle { position: absolute; bottom: 0; left: 50%; width: 3px; height: 90px; background: var(--red); transform-origin: bottom center; transform: rotate(-90deg); transition: transform 1.5s cubic-bezier(0.17, 0.67, 0.83, 0.67); border-radius: 2px; }
+        
+        /* Typography & Layout */
+        .status { font-size: 2rem; font-weight: 800; margin: 10px 0; letter-spacing: -1px; }
+        .badge { font-family: monospace; background: #21262d; padding: 6px 12px; border-radius: 8px; color: var(--light-green); border: 1px solid #30363d; font-size: 0.9rem; }
+        .hint { font-size: 0.85rem; text-transform: uppercase; letter-spacing: 1.5px; margin-top: 15px; color: var(--dim); }
+        .data-row { display: flex; justify-content: space-between; margin-top: 20px; padding-top: 15px; border-top: 1px solid #30363d; font-size: 0.8rem; color: var(--dim); }
+        
+        /* Trade Logging Styles */
+        .trade-input { margin-top: 20px; padding: 15px; background: #1c2128; border-radius: 12px; border: 1px solid #30363d; }
+        input { width: 80%; padding: 8px; margin-bottom: 10px; background: var(--bg); border: 1px solid #30363d; color: var(--text); border-radius: 4px; text-align: center; font-family: monospace; }
+        input:focus { outline: none; border-color: var(--green); }
+        button { background: var(--green); color: white; border: none; padding: 10px 20px; border-radius: 6px; font-weight: bold; cursor: pointer; width: 100%; transition: background 0.2s; }
+        button:hover { background: var(--light-green); color: var(--bg); }
+        
+        /* P&L Performance Tracker Styles */
+        .pnl-container { display: flex; justify-content: space-between; margin-top: 15px; background: #0d1117; padding: 12px; border-radius: 8px; border: 1px solid #30363d; }
+        .pnl-box { text-align: center; width: 48%; }
+        .pnl-title { font-size: 0.65rem; color: var(--dim); text-transform: uppercase; letter-spacing: 1px; margin-bottom: 4px; }
+        .pnl-value { font-family: monospace; font-size: 1.1rem; font-weight: bold; }
+        .profit { color: var(--light-green); }
+        .loss { color: var(--red); }
     </style>
 </head>
 <body>
 
 <div class="card">
-    <h3>Shannon's Demon</h3>
-    <div id="asset-label" class="price-badge">WAITING FOR DATA...</div>
+    <div id="price-badge" class="badge">AWAITING WORKER...</div>
     
-    <div class="gauge-container">
-        <div class="gauge-arc"></div>
+    <div class="gauge-box">
+        <div class="arc"></div>
         <div id="needle" class="needle"></div>
     </div>
 
-    <div id="ratio-display" class="status">--% Cash</div>
-    <div id="action-hint" style="color: #8b949e; font-size: 0.8rem;">Monitoring Equilibrium...</div>
+    <div id="ratio" class="status">--%</div>
+    <div id="instruction" class="hint">Connecting...</div>
+
+    <div class="pnl-container">
+        <div class="pnl-box">
+            <div class="pnl-title">Month to Date</div>
+            <div id="mtd-pnl" class="pnl-value">$--</div>
+        </div>
+        <div class="pnl-box">
+            <div class="pnl-title">All-Time P&L</div>
+            <div id="all-time-pnl" class="pnl-value">$--</div>
+        </div>
+    </div>
+
+    <div class="data-row">
+        <div>Asset: <span id="val-asset" style="color:var(--text)">$0</span></div>
+        <div>Total Value: <span id="val-total" style="color:var(--text)">$0</span></div>
+    </div>
+
+    <div class="trade-input">
+        <div style="font-size: 0.7rem; margin-bottom: 10px; color: var(--dim);">LOG REBALANCE AMOUNT</div>
+        <input type="number" id="trade-amount" placeholder="Size (e.g. 1.5)">
+        <button onclick="logTrade()">COMMIT TRADE</button>
+    </div>
 </div>
 
 <script>
-    // 1. CONNECTION SETTINGS
-    const SUPABASE_URL = 'https://bfksiczwgtjezjokgqiy.supabase.co';
-    const SUPABASE_KEY = sb_publishable_okLdWFEwWl8JfhmP766cxA_u4JMbD8_; // Use the ANON key, not service_role!
+    // --- CONFIGURATION ---
+    // Change this number to your actual starting portfolio capital
+    const INITIAL_CAPITAL = 25000; 
 
-    const supabaseClient = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+    // Initialize Supabase (Using the open publishable key safe for mobile browsers)
+    const client = supabase.createClient('https://bfksiczwgtjezjokgqiy.supabase.co', 'sb_publishable_okLdWFEwWl8JfhmP766cxA_u4JMbD8_');
 
-    // 2. LISTEN FOR UPDATES
-    const channel = supabaseClient
-        .channel('schema-db-changes')
-        .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'portfolio_stats' }, payload => {
-            console.log('Update received!', payload.new);
-            refreshUI(payload.new);
-        })
-        .subscribe();
-
-    function refreshUI(data) {
-        const total = data.asset_value + data.cash_value;
-        const cashRatio = (data.cash_value / total) * 100;
+    // Real-Time Listener
+    client.channel('any').on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'portfolio_stats' }, (payload) => {
+        const d = payload.new;
+        const totalValue = d.asset_value + d.cash_value;
+        const cashP = (d.cash_value / totalValue) * 100;
         
-        // Update Label
-        document.getElementById('asset-label').innerText = `${data.asset_name}: $${data.asset_value.toLocaleString()}`;
-        document.getElementById('ratio-display').innerText = `${cashRatio.toFixed(1)}% Cash`;
+        // 1. Update Core UI
+        document.getElementById('price-badge').innerText = `${d.asset_name} SYNCED`;
+        document.getElementById('ratio').innerText = `${cashP.toFixed(1)}%`;
+        document.getElementById('val-asset').innerText = `$${Math.round(d.asset_value).toLocaleString()}`;
+        document.getElementById('val-total').innerText = `$${Math.round(totalValue).toLocaleString()}`;
 
-        // Move Needle (50% is 0 degrees)
-        const rotation = (cashRatio * 1.8) - 90;
-        document.getElementById('needle').style.transform = `rotate(${rotation}deg)`;
+        // 2. Needle Movement
+        const deg = (cashP * 1.8) - 90;
+        document.getElementById('needle').style.transform = `rotate(${deg}deg)`;
 
-        // Action Logic
-        const hint = document.getElementById('action-hint');
-        if (cashRatio > 55) { hint.innerText = "ACTION: BUY ASSET"; hint.style.color = "#f85149"; }
-        else if (cashRatio < 45) { hint.innerText = "ACTION: SELL ASSET"; hint.style.color = "#f85149"; }
-        else { hint.innerText = "Equilibrium Reached"; hint.style.color = "#7ee787"; }
+        // 3. Trading Guidance
+        const ins = document.getElementById('instruction');
+        if (cashP > 51) { ins.innerText = "Action: Buy ETH"; ins.style.color = "var(--red)"; }
+        else if (cashP < 49) { ins.innerText = "Action: Sell ETH"; ins.style.color = "var(--red)"; }
+        else { ins.innerText = "Perfectly Balanced"; ins.style.color = "var(--light-green)"; }
+
+        // 4. Calculate P&L
+        calculatePerformance(totalValue);
+
+    }).subscribe();
+
+    function calculatePerformance(currentTotal) {
+        // All-Time P&L Math
+        const allTimeProfit = currentTotal - INITIAL_CAPITAL;
+        const allTimePercent = (allTimeProfit / INITIAL_CAPITAL) * 100;
+        
+        const allTimeEl = document.getElementById('all-time-pnl');
+        allTimeEl.innerText = `${allTimeProfit >= 0 ? '+' : ''}$${Math.round(allTimeProfit).toLocaleString()} (${allTimePercent.toFixed(1)}%)`;
+        allTimeEl.className = `pnl-value ${allTimeProfit >= 0 ? 'profit' : 'loss'}`;
+
+        // Month-to-Date (MTD) Math using Local Storage Snapshot
+        const currentMonth = new Date().toISOString().slice(0, 7); // Format: "2026-05"
+        let monthStartCapital = localStorage.getItem(`start_cap_${currentMonth}`);
+
+        // If it's a new month (or first time running), save the current total as the baseline
+        if (!monthStartCapital) {
+            localStorage.setItem(`start_cap_${currentMonth}`, currentTotal);
+            monthStartCapital = currentTotal;
+        }
+
+        const mtdProfit = currentTotal - parseFloat(monthStartCapital);
+        const mtdPercent = (mtdProfit / monthStartCapital) * 100;
+
+        const mtdEl = document.getElementById('mtd-pnl');
+        mtdEl.innerText = `${mtdProfit >= 0 ? '+' : ''}$${Math.round(mtdProfit).toLocaleString()} (${mtdPercent.toFixed(1)}%)`;
+        mtdEl.className = `pnl-value ${mtdProfit >= 0 ? 'profit' : 'loss'}`;
+    }
+
+    // Write Trade back to Database
+    async function logTrade() {
+        const amount = document.getElementById('trade-amount').value;
+        if(!amount) return alert("Enter trade amount.");
+
+        const { error } = await client
+            .from('portfolio_stats')
+            .update({ last_trade_amount: parseFloat(amount), last_trade_time: new Date() })
+            .eq('id', 1);
+
+        if (error) {
+            alert("Database Error: Could not log trade.");
+        } else {
+            document.getElementById('trade-amount').value = '';
+            document.getElementById('trade-amount').placeholder = "TRADE LOGGED!";
+            setTimeout(() => document.getElementById('trade-amount').placeholder = "Size (e.g. 1.5)", 2000);
+        }
     }
 </script>
 </body>
