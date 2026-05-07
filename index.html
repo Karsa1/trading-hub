@@ -76,8 +76,9 @@
         document.getElementById('needle').style.transform = `rotate(${deg}deg)`;
         
         const atProfit = total - initialCap;
-        document.getElementById('all-time-pnl').innerText = `$${Math.round(atProfit).toLocaleString()}`;
-        document.getElementById('all-time-pnl').className = `pnl-value ${atProfit >= 0 ? 'profit' : 'loss'}`;
+        const pnlEl = document.getElementById('all-time-pnl');
+        pnlEl.innerText = `$${Math.round(atProfit).toLocaleString()}`;
+        pnlEl.className = `pnl-value ${atProfit >= 0 ? 'profit' : 'loss'}`;
     }).subscribe();
 
     async function logTrade(type) {
@@ -85,7 +86,10 @@
         const asset = document.getElementById('t-asset').value;
         if (!amt) return alert("Enter amount");
         const { error } = await client.from('portfolio_stats').update({ 
-            last_trade_amount: parseFloat(amt), last_trade_type: type, last_trade_asset: asset, last_trade_time: new Date() 
+            last_trade_amount: parseFloat(amt), 
+            last_trade_type: type, 
+            last_trade_asset: asset, 
+            last_trade_time: new Date() 
         }).eq('id', 1);
         if (!error) { document.getElementById('t-amount').value = ''; alert("Logged!"); }
     }
